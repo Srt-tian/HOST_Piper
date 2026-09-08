@@ -1,0 +1,23 @@
+defaults:
+  - custom_cross_all
+  - _self_
+
+train:
+  data_path: ${oc.env:HOST_PREPARED_ROOT}/train/piper_video_paths.json
+  cam_mapping_dir: ${oc.env:HOST_PREPARED_ROOT}/cam_mapping
+  joint_action_mapping_dir: ${oc.env:HOST_PREPARED_ROOT}/joint_action_mapping
+  num_view_probs: '{"3": 1.0}'
+  dataset_image_size: {piper: [224, 224]}
+  dataset_fps: {piper: 30}
+  action_video_freq_ratio: 8
+  max_action_len: 30
+  use_6d_rotation: true
+  use_relative_action: true
+  use_augmentation: false
+  task_video_drop_prob: 0.0
+  processor: {action_output_dim: 22, proprio_output_dim: 20}
+
+val:
+  data_path: ${oc.env:HOST_PREPARED_ROOT}/val/piper_video_paths.json
+
+extra_val: null

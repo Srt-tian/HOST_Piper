@@ -1,0 +1,22 @@
+{
+  "seed": 42,
+  "val_fraction": 0.1,
+  "conventions": {
+    "confirmed": false,
+    "position_unit": null,
+    "angle_unit": null,
+    "rpy": null,
+    "end_frame": null,
+    "target_source": null,
+    "command_semantics_confirmed": false
+  },
+  "sources": [
+    {
+      "id": "bottle_1819",
+      "task": "stand_bottles_upright",
+      "instruction": "Stand the bottles upright on the table.",
+      "tos": "tos://magiclab/datasight/dataset/瓶子立起-松灵臂-纯遥操-主从臂/task_1819/teleop_20260806/",
+      "root": "/pfs/user/data/host_piper_paper/raw/bottle_1819"
+    }
+  ]
+}

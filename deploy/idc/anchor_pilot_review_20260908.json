@@ -1,0 +1,151 @@
+{
+  "reviewer": "assistant",
+  "scope": "Initial candidate screening using 8 sequentially decoded temporal samples per camera, not full-motion or DTW correspondence validation",
+  "pilot_only": true,
+  "groups": [
+    {
+      "task": "basket",
+      "split": "train",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/train/basket_task_1843_0807/episode_000015",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/basket_train.jpg",
+      "sampled_indices": [
+        0,
+        86,
+        172,
+        259,
+        345,
+        432,
+        518,
+        605
+      ],
+      "notes": "Objects appear collected in the basket at the final sampled frame. Object sets/order vary across sources; semantic compatibility needs per-pair checks."
+    },
+    {
+      "task": "bottles",
+      "split": "train",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/train/bottles_task_1831_teleop_20260806/episode_000024",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/bottles_train.jpg",
+      "sampled_indices": [
+        0,
+        107,
+        215,
+        322,
+        430,
+        537,
+        645,
+        753
+      ],
+      "notes": "All three bottles appear upright at the final sampled frame. Repeated-object ordering and arm choices require alignment-quality checks."
+    },
+    {
+      "task": "lemon",
+      "split": "train",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/train/lemon_task_1895_teleop_20260813/episode_000033",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/lemon_train.jpg",
+      "sampled_indices": [
+        0,
+        29,
+        58,
+        87,
+        117,
+        146,
+        175,
+        205
+      ],
+      "notes": "The fruit appears inside the tray at the final sampled frame. Short single-object sequence is the recommended first pipeline pilot."
+    },
+    {
+      "task": "pens",
+      "split": "train",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/train/pens_task_1841_teleop_20260807/episode_000068",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/pens_train.jpg",
+      "sampled_indices": [
+        0,
+        121,
+        243,
+        365,
+        487,
+        609,
+        731,
+        853
+      ],
+      "notes": "Three writing implements appear in the holder at the final sampled frame. Insertion order differs between candidates; do not equate color identity with global progress."
+    },
+    {
+      "task": "basket",
+      "split": "val",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/val/basket_task_1825_teleop_20260806/episode_000086",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/basket_val.jpg",
+      "sampled_indices": [
+        0,
+        73,
+        146,
+        219,
+        293,
+        366,
+        439,
+        513
+      ],
+      "notes": "Objects appear collected in the basket at the final sampled frame. Object sets/order vary across sources; semantic compatibility needs per-pair checks."
+    },
+    {
+      "task": "bottles",
+      "split": "val",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/val/bottles_task_1831_teleop_20260806/episode_000035",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/bottles_val.jpg",
+      "sampled_indices": [
+        0,
+        113,
+        226,
+        340,
+        453,
+        567,
+        680,
+        794
+      ],
+      "notes": "All three bottles appear upright at the final sampled frame. Repeated-object ordering and arm choices require alignment-quality checks."
+    },
+    {
+      "task": "lemon",
+      "split": "val",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/val/lemon_task_1895_teleop_20260813/episode_000181",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/lemon_val.jpg",
+      "sampled_indices": [
+        0,
+        30,
+        60,
+        90,
+        120,
+        150,
+        180,
+        210
+      ],
+      "notes": "The fruit appears inside the tray at the final sampled frame. Short single-object sequence is the recommended first pipeline pilot."
+    },
+    {
+      "task": "pens",
+      "split": "val",
+      "anchor": "/pfs/user/data/host_piper_paper/alignment_visual_20260908/episodes/val/pens_task_1841_teleop_20260807/episode_000135",
+      "reviewed": true,
+      "evidence": "/pfs/user/data/host_piper_paper/anchor_review_20260908/pens_val.jpg",
+      "sampled_indices": [
+        0,
+        127,
+        255,
+        382,
+        510,
+        637,
+        765,
+        893
+      ],
+      "notes": "Three writing implements appear in the holder at the final sampled frame. Insertion order differs between candidates; do not equate color identity with global progress."
+    }
+  ]
+}
