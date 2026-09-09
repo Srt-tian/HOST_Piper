@@ -165,3 +165,20 @@ to submit an EIP training job or a resolution of the pending EEF conventions.
   identical commits before/after transfer, never develop in that temporary transport copy.
 - Keep the official source as upstream and use Srt-tian/HOST_Piper as canonical origin.
   Git recovery/clean-worktree and fully resolved EIP launch gates remain in force.
+
+## Official-configuration probe preparation, 2026-09-09
+
+- Task11534 successfully completed real pretrained8B four-A8002-step smoke and
+ full fresh-process checkpoint reload; allocated39.061GiB/reserved49.453GiB peaks.
+ Earlier "GPU not validated" entries above are historical, superseded for this
+ short4-anchor smoke ONLY. Production quality/long lengths remain unverified.
+- User replaced the proposed gradual length sweep with the released configuration.
+ New wrapper runs original alignment/train.py with24/96 anchors, officialM mix,
+ microbatch4/rank and single-node launcher accumulation4;10 actual engine updates
+ with official3000-step/100-warmup schedule, then full independent-process reload.
+ See deploy/idc/OFFICIAL_PROBE.md for exact adaptations, limits and acceptance.
+- CPU official train sampler/real processor passed4 rank cases:8x4945 input IDs,
+ 24CLS/row;40 CPU tests passed. Certified12-train lemon dataset uses weighted
+ replacement sampling perrank, not12/4 distributed slicing.
+- New GPU probe is NOT submitted; await exact resource/code review and confirmation.
+ No length-sweep code, formal DTW labels, production alignment or policy training.
