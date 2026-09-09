@@ -32,6 +32,10 @@ def apply_profile(root, context_frames=1):
 
 def strict_load_imgs(self, paths):
     """Same batched Decord -> PIL resize path; fail instead of substituting black RGB."""
+    import os
+    if os.environ.get('HOST_VIDEO_DECODE_MODE') == 'sequential':
+        from piper_low_memory import sequential_load_imgs
+        return sequential_load_imgs(paths)
     import decord
     from PIL import Image
     grouped, result = {}, [None]*len(paths)

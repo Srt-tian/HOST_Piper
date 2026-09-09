@@ -82,6 +82,12 @@ class BaseModel(nn.Module):
                 if 'cls_token_id' in inputs:
                     forward_kwargs['cls_token_id'] = inputs['cls_token_id']
 
+            keep = os.environ.get('HOST_ALIGNMENT_LOGITS_TO_KEEP')
+            if keep is not None:
+                if keep != '1':
+                    raise ValueError('Only the verified one-token-logits optimization is supported')
+                forward_kwargs['logits_to_keep'] = 1
+                forward_kwargs['use_cache'] = False
             outputs = self.base_model(**forward_kwargs)
             
             # Extract features: Average pool image tokens from last hidden state

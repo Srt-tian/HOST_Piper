@@ -182,3 +182,21 @@ to submit an EIP training job or a resolution of the pending EEF conventions.
  replacement sampling perrank, not12/4 distributed slicing.
 - New GPU probe is NOT submitted; await exact resource/code review and confirmation.
  No length-sweep code, formal DTW labels, production alignment or policy training.
+
+## AutoDL final-only alignment, 2026-09-09
+
+- IDC official probe11552 failed on an11.20GiB all-token vocabulary-logit allocation;
+  one actual optimizer update completed, no checkpoint. See sanitized external run ledger.
+- User authorized AutoDL training on the newly supplied host and explicitly requested
+  only one final checkpoint. This supersedes the earlier IDC-only preference for this run.
+  AutoDL runtime/weights use isolated /root/host_piper_runtime on system disk; data/output
+  use /root/autodl-tmp/host_piper with IDC-compatible aliases. No base/KAI0 package changes.
+- Added CPU optimizer offload, explicit logits_to_keep=1, raw PyAV sequential decoding,
+  and a final-only3000-actual-update trainer retaining24/96 anchors and micro4/accum4.
+  Twenty-update reserved-memory gate65GiB; not a guarantee against later OOM.
+- Full sequential audit passed all2652 videos/884episodes. Exact resized RGB equality
+  passed816 samples across48 pilot videos. Tiny CPU full-vs-one-token logits test matched
+  loss and100 gradient tensors; not a real8B GPU verification.44 CPU tests passed.
+- See deploy/autodl/README.md for storage, checksum/commit gates, command and limitations.
+  No automatic intermediate checkpoint, backup or retry. No DTW labels produced.
+  Deployment transfer in progress at preparation; actual launch is recorded separately.
