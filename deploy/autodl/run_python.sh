@@ -7,6 +7,8 @@ export PYTHONPATH="/root/host_piper_runtime/envs/alignment/lib/python3.10/site-p
 export CUDA_HOME=/usr/local/cuda-12.4
 export PATH="/root/host_piper_runtime/envs/alignment/bin:${CUDA_HOME}/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="/root/host_piper_runtime/python310/lib:${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+# CPUAdamBuilder links -lcurand without an explicit -L on this image.
+export LIBRARY_PATH="${CUDA_HOME}/lib64:${LIBRARY_PATH:-}"
 export HF_HOME=/root/host_piper_runtime/cache/huggingface
 export TORCH_HOME=/root/host_piper_runtime/cache/torch
 export TORCH_EXTENSIONS_DIR=/root/host_piper_runtime/cache/torch_extensions

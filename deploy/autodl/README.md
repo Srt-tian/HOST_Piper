@@ -57,3 +57,8 @@ checkpoint/final is written only after step3000, then train_complete.json is cre
 No DTW labels or policy-training-ready marker are produced here.
 Record actual commit, PID, output and verification evidence in a sanitized run ledger.
 Freeze this checkout once training starts; use another checkout for concurrent development.
+
+AutoDL environment preflight passed Python3.10.21, Torch2.4.0+cu124,
+Transformers4.57.3, DeepSpeed0.14.4, PyAV16.0.1 and four visible GPUs.
+CPUAdam compiled and performed a finite small-tensor update after setting
+project-scoped LIBRARY_PATH to CUDA12.4/lib64. No system-library installation needed.
