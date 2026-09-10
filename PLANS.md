@@ -200,3 +200,17 @@ to submit an EIP training job or a resolution of the pending EEF conventions.
 - See deploy/autodl/README.md for storage, checksum/commit gates, command and limitations.
   No automatic intermediate checkpoint, backup or retry. No DTW labels produced.
   Deployment transfer in progress at preparation; actual launch is recorded separately.
+## Rolling weight checkpoints supersede final-only, 2026-09-09
+
+- User requested intermediate model-only checkpoints, rolling retention of the latest few,
+  and explicitly authorized restarting the unsaved run. Old logs are retained.
+- New entrypoint deploy/autodl/train_alignment_weights.sh saves step20/every100/final3000,
+  keeps latest3 complete BF16 model checkpoints, never optimizer/gradient/scheduler state.
+- Atomic publication after complete key/shape/dtype/finite/hash verification; only then prune
+  old run-owned files. Check32GiB free before every save. See deploy/autodl/WEIGHTS_ONLY.md.
+- Actual previous run reached step5 with no OOM but reserved cache grew to~69GiB,
+  exceeding the conservative65GiB20-step gate. The user asked for safe autonomous startup.
+  New microbatch2/accumulation8 retains global64 and24/96 anchors; clear unused CUDA cache
+  at optimizer boundaries. The65GiB gate is unchanged; save step20 before checking it.
+-54 CPU tests passed before the final microbatch-headroom adjustment; rerun before publish.
+  Four-rank tiny save/reload/retention and real restart validation are still pending.

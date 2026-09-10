@@ -46,14 +46,14 @@ def sequential_load_imgs(paths):
     return result
 
 
-def check_paths(root, weights, output):
+def check_paths(root, weights, output, minimum_free_gib=110):
     import json
     import shutil
     root, weights, output = map(lambda p:Path(p).resolve(), (root, weights, output))
     if output.exists():
         raise ValueError('Use a new output directory')
-    if shutil.disk_usage(output.parent).free < 110*1024**3:
-        raise ValueError('Reserve110GiB free for one final full checkpoint and margin')
+    if shutil.disk_usage(output.parent).free < minimum_free_gib*1024**3:
+        raise ValueError(f'Reserve{minimum_free_gib}GiB free for checkpoint storage and margin')
     verified = json.loads((weights/'verified_artifacts.json').read_text())
     if verified.get('verified') is not True or verified.get('revision') != '2c4565515e0f265c6511776e7193b22c0968ddc7':
         raise ValueError('Pinned verified weights required')

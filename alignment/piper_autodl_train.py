@@ -1,4 +1,4 @@
-"""Four-task AutoDL alignment training: low-memory, only one FINAL checkpoint."""
+"""Four-task AutoDL alignment: final-full or explicit rolling model-only saves."""
 import argparse
 import copy
 import json
@@ -10,24 +10,27 @@ import time
 from piper_low_memory import apply_low_memory_config, check_paths
 
 
-def ds_config(cfg):
+def ds_config(cfg, weights_only=False, accumulation_steps=4):
     base = json.loads((Path(__file__).resolve().parent/'scripts/ds_config_zero3.json').read_text())
     base.update(copy.deepcopy(dict(cfg.DS_CONFIG)))
-    base['gradient_accumulation_steps'] = 4
+    base['gradient_accumulation_steps'] = accumulation_steps
     base['zero_optimization']['offload_optimizer'] = dict(device='cpu', pin_memory=True)
-    base['zero_optimization']['stage3_gather_16bit_weights_on_model_save'] = False
+    base['zero_optimization']['stage3_gather_16bit_weights_on_model_save'] = weights_only
     return base
 
 
 def run(args):
     if os.environ.get('HOST_AUTODL_TRAIN_APPROVED') != '1' or int(os.environ.get('WORLD_SIZE','0')) != 4:
         raise ValueError('Approved four-GPU AutoDL launch required')
+    if min(args.checkpoint_interval,args.keep_checkpoints,args.micro_batch_size,args.gradient_accumulation_steps) < 1:
+        raise ValueError('Positive checkpoint interval and retention required')
     import numpy as np
     import torch
     import deepspeed
     from transformers import AutoProcessor
     from torch.utils.data import DataLoader, WeightedRandomSampler
     from piper_smoke import make_model, loss_for, to_device
+    from piper_weight_checkpoints import checkpoint_due, save_weights
     from datasets import AlignmentDataset, AlignmentCollator, worker_init_fn
 
     root, weights, output = Path(args.root), Path(args.weights), Path(args.output)
@@ -39,10 +42,12 @@ def run(args):
     np.random.seed(42+rank)
     torch.manual_seed(42)
     cfg = apply_low_memory_config(root)
+    cfg.DS_CONFIG.train_micro_batch_size_per_gpu = args.micro_batch_size
+    cfg.TRAIN.BATCH_SIZE = args.micro_batch_size
     os.environ['HOST_ALIGNMENT_MODEL_PATH'] = str(weights)
     deepspeed.init_distributed()
     if rank == 0:
-        check_paths(root, weights, output)
+        check_paths(root, weights, output, minimum_free_gib=40 if args.weights_only else 110)
         output.mkdir(exist_ok=False)
     torch.distributed.barrier()
     torch.cuda.reset_peak_memory_stats()
@@ -54,16 +59,18 @@ def run(args):
     generator = torch.Generator().manual_seed(42+rank)
     sampler = WeightedRandomSampler(torch.DoubleTensor(dataset.weights), len(dataset.weights),
                                     replacement=True, generator=generator)
-    loader = DataLoader(dataset, batch_size=4, sampler=sampler, num_workers=2,
+    loader = DataLoader(dataset, batch_size=args.micro_batch_size, sampler=sampler, num_workers=2,
         prefetch_factor=1, pin_memory=False, persistent_workers=True, drop_last=True,
         collate_fn=AlignmentCollator(processor=processor, mode='train'),
         worker_init_fn=worker_init_fn)
     model = make_model(str(weights), False)
-    engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=ds_config(cfg))
+    engine, _, _, _ = deepspeed.initialize(model=model, model_parameters=model.parameters(), config=ds_config(cfg, args.weights_only, args.gradient_accumulation_steps))
     started = time.monotonic()
     report = dict(rank=rank, approved=True, data_root=str(root), episodes=796,
                   validation_episodes=88, pretrained_revision='2c4565515e0f265c6511776e7193b22c0968ddc7',
-                  effective_ds=ds_config(cfg), final_only_checkpoint=True, optimizer_steps=0,
+                  effective_ds=ds_config(cfg, args.weights_only, args.gradient_accumulation_steps), final_only_checkpoint=not args.weights_only,
+                  weights_only=args.weights_only, checkpoint_interval=args.checkpoint_interval,
+                  keep_checkpoints=args.keep_checkpoints, optimizer_steps=0,
                   micro_steps=0, production_quality_validated=False, progress_generated=False)
     (output/f'config_rank{rank}.json').write_text(json.dumps(report, indent=2))
     stream = (output/f'metrics_rank{rank}.jsonl').open('x')
@@ -92,27 +99,42 @@ def run(args):
                         device_used_bytes=total-free, seconds=time.monotonic()-started)
                     stream.write(json.dumps(record, allow_nan=False)+'\n')
                     stream.flush()
+                    if args.weights_only and checkpoint_due(engine.global_steps, interval=args.checkpoint_interval):
+                        # Save BEFORE the20-step safety gate; an unsafe run keeps usable weights.
+                        data = None
+                        saved = save_weights(engine, output, engine.global_steps,
+                            final=engine.global_steps==3000, keep=args.keep_checkpoints)
+                        report['latest_weights'] = saved['path']
+                        (output/f'checkpoint_status_rank{rank}.json').write_text(json.dumps(saved))
+
                     print(json.dumps(record, allow_nan=False), flush=True)
                     # Fail closed after20 real updates if the reserved-memory margin is unsafe.
                     if engine.global_steps == 20:
                         peak = torch.tensor(record['peak_reserved_bytes'], device=torch.device('cuda', device), dtype=torch.float64)
                         torch.distributed.all_reduce(peak, op=torch.distributed.ReduceOp.MAX)
                         if peak.item() > 65*1024**3:
-                            raise ValueError('20-update memory gate exceeded65GiB reserved; no checkpoint saved')
+                            raise ValueError('20-update memory gate exceeded65GiB reserved; '+
+                                ('weights saved before gate' if args.weights_only else 'no checkpoint saved'))
                         if rank == 0:
                             (output/'memory_gate_passed.json').write_text(json.dumps(
-                                dict(optimizer_steps=20, max_reserved_bytes=peak.item(), checkpoint_saved=False)))
+                                dict(optimizer_steps=20, max_reserved_bytes=peak.item(), checkpoint_saved=args.weights_only)))
                 del loss
+                if args.weights_only and engine.global_steps > before:
+                    # Release unused allocator cache at update boundaries to leave consolidation headroom.
+                    # Does not change live tensors, batch/anchor settings, optimizer or the65GiB gate.
+                    data = None
+                    torch.cuda.empty_cache()
                 if engine.global_steps >= 3000:
                     done = True
                     break
         import shutil
-        if shutil.disk_usage(output).free < 110*1024**3:
-            raise ValueError('Insufficient110GiB final checkpoint reserve')
-        engine.save_checkpoint(str(output/'checkpoint'), tag='final',
-                               client_state=dict(step=3000, final_only=True, data_root=str(root)))
+        if not args.weights_only:
+            if shutil.disk_usage(output).free < 110*1024**3:
+                raise ValueError('Insufficient110GiB final checkpoint reserve')
+            engine.save_checkpoint(str(output/'checkpoint'), tag='final',
+                                   client_state=dict(step=3000, final_only=True, data_root=str(root)))
         torch.distributed.barrier()
-        report.update(complete=True, seconds=time.monotonic()-started, final_checkpoint='checkpoint/final')
+        report.update(complete=True, seconds=time.monotonic()-started, final_checkpoint=report.get('latest_weights','checkpoint/final'))
         (output/f'complete_rank{rank}.json').write_text(json.dumps(report, indent=2))
         if rank == 0:
             (output/'train_complete.json').write_text(json.dumps(dict(complete=True, step=3000, production_quality_validated=False)))
@@ -130,4 +152,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for key in ('root','weights','output'):
         parser.add_argument('--'+key, required=True)
+    parser.add_argument('--weights-only',action='store_true')
+    parser.add_argument('--checkpoint-interval',type=int,default=100)
+    parser.add_argument('--keep-checkpoints',type=int,default=3)
+    parser.add_argument('--micro-batch-size',type=int,default=4)
+    parser.add_argument('--gradient-accumulation-steps',type=int,default=4)
     run(parser.parse_args())
