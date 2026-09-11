@@ -23,6 +23,13 @@ def run(root,weights):
         handles=install_last_hidden_only(model)
         after_emb=model(copy.deepcopy(data),steps,lengths,training=False)['embs'].clone()
         after=loss_for(model,data,0,training=False)
+        from piper_serial_inference import install_serial_cnn
+        install_serial_cnn(model)
+        serial_emb=model(copy.deepcopy(data),steps,lengths,training=False)['embs'].clone()
+        serial_loss=loss_for(model,data,0,training=False)
+    torch.testing.assert_close(before_emb,serial_emb,rtol=1e-5,atol=1e-6)
+    torch.testing.assert_close(before,serial_loss,rtol=1e-5,atol=1e-6)
+    print(json.dumps(dict(serial_embedding_max_abs=float((before_emb-serial_emb).abs().max()),serial_loss=float(serial_loss))))
     torch.testing.assert_close(before,after,rtol=0,atol=0)
     torch.testing.assert_close(before_emb,after_emb,rtol=0,atol=0)
     print(json.dumps(dict(passed=True,random_tiny_cpu_only=True,loss=float(before),

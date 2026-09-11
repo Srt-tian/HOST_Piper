@@ -76,6 +76,8 @@ def run(args):
     model=model.to(device=args.device,dtype=torch.bfloat16).eval()
     model.cnn.base_model.gradient_checkpointing_disable()
     handles=install_last_hidden_only(model)
+    from piper_serial_inference import install_serial_cnn
+    install_serial_cnn(model)
     started=time.monotonic()
     reports=[]
     with torch.no_grad(),(output/'records.jsonl').open('x') as stream:

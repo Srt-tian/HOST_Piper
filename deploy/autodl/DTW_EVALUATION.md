@@ -24,3 +24,14 @@ checkout; do not edit the active training checkout or raw data.
   long plateaus, endpoints and task-order compatibility before enabling next-stage data work.
 - Next safe stage if pilot passes: expand held-out review, then same-checkpoint full offline
   labels with canonical task/split references. No policy training or fabricated linear GT.
+
+## Shared-GPU pilot correction
+
+The first full8B pilot hit the22GiB per-process evaluation cap while jointly encoding
+all eight packed Qwen rows. Training remained live; do not raise the cap.
+The evaluation-only serial adapter now encodes each independent padded Qwen row,
+preserving its complete prefix,24 anchors,position IDs and attention semantics.
+Visual grid ownership is validated against exact placeholder counts; pooled features
+are restored to all-main then all-reference order before unchanged HOST merging/DTW.
+Tiny real-input equivalence and slicing/order negative tests must pass before launch.
+The failed pilot output remains as evidence; the revised run uses pilot_serial_20260911.
