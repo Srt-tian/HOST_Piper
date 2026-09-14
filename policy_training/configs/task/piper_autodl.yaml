@@ -1,0 +1,23 @@
+# @package _global_
+defaults:
+  - piper_3cam_future_state
+  - _self_
+
+model:
+  redirect_common_files: false
+  action_dit_pretrained_path: null
+  log_cross_attn_weights: false
+
+batch_size: 1
+num_workers: 2
+gradient_accumulation_steps: 4
+max_steps: 10000
+log_every: 1
+save_every: 500
+eval_every: 0
+model_only_checkpoints: true
+keep_model_checkpoints: 2
+max_reserved_gib: 74
+data:
+  train:
+    context_len: 128

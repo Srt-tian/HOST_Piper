@@ -1025,6 +1025,9 @@ class Wan22Trainer:
             json.dump(payload, f, ensure_ascii=True, indent=2)
 
     def save_checkpoint(self):
+        if self.cfg.get("model_only_checkpoints", False):
+            from .policy_safety import save_model_only
+            return save_model_only(self)
         step_tag = f"step_{self.global_step:06d}"
 
         self.accelerator.wait_for_everyone()
@@ -1118,10 +1121,13 @@ class Wan22Trainer:
                 train_model = self.model if hasattr(self.model, "training_loss") else self.accelerator.unwrap_model(self.model)
 
                 with self.accelerator.autocast():
-                    loss, loss_dict = train_model.training_loss(
+                    loss, loss_dict = self.model(
                         sample,
                         action_component_slices=self.action_component_slices,
                     )
+                if self.cfg.get("model_only_checkpoints", False):
+                    if not torch.isfinite(loss).all():
+                        raise FloatingPointError("Nonfinite training loss; stopping before backward")
                 self.accelerator.backward(loss)
 
                 if self.accelerator.sync_gradients:
@@ -1131,6 +1137,9 @@ class Wan22Trainer:
                         self.scheduler.step()
                     self.optimizer.zero_grad(set_to_none=True)
                     self.global_step += 1
+                    if self.cfg.get("model_only_checkpoints", False):
+                        from .policy_safety import check_train_health
+                        check_train_health(self, loss)
                     self._apply_staged_freeze(self.global_step)
                     global_loss = float(
                         self.accelerator.gather(loss.detach().float().reshape(1)).mean().item()

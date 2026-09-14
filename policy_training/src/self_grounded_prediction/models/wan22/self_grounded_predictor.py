@@ -1,4 +1,5 @@
 from typing import Any, Optional, Sequence, Union
+import os
 
 import torch
 import torch.nn as nn
@@ -2485,6 +2486,9 @@ class SelfGroundedPredictor(torch.nn.Module):
         torch.save(payload, path)
 
     def load_checkpoint(self, path, optimizer=None):
+        if os.environ.get("HOST_POLICY_STRICT_LOAD") == "1":
+            from self_grounded_prediction.policy_safety import load_strict_host
+            return load_strict_host(self, path, optimizer=optimizer)
         payload = torch.load(path, map_location="cpu")
         if "mot" in payload:
             result = self.mot.load_state_dict(payload["mot"], strict=False)

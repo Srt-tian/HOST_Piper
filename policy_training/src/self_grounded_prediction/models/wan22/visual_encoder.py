@@ -86,6 +86,10 @@ def _local_load(local_repo: str, entry: str, weights_path: str):
     local_repo = str(local_repo)
     if not Path(local_repo).is_dir():
         raise FileNotFoundError(f"Local dinov2 repo not found: {local_repo}")
+    if weights_path == "HOST_CHECKPOINT_STRICT":
+        if os.environ.get("HOST_POLICY_STRICT_LOAD") != "1":
+            raise ValueError("Architecture-only init requires strict HOST checkpoint loading")
+        return torch.hub.load(local_repo, entry, source="local", pretrained=False)
     weights_path = str(weights_path)
     if not Path(weights_path).is_file():
         raise FileNotFoundError(f"Local weights file not found: {weights_path}")
@@ -107,6 +111,10 @@ def _timm_load_siglip(timm_model_id: str, image_size: int,
 
     Uses fcntl lock for thread-safe weight downloading (same pattern as DINOv2).
     """
+    if local_weights_path == "HOST_CHECKPOINT_STRICT":
+        if os.environ.get("HOST_POLICY_STRICT_LOAD") != "1":
+            raise ValueError("Architecture-only init requires strict HOST checkpoint loading")
+        return timm.create_model(timm_model_id, pretrained=False, num_classes=0, img_size=image_size)
     cache_root = Path(os.environ.get("TORCH_HOME", os.path.expanduser("~/.cache/torch")))
     cache_root.mkdir(parents=True, exist_ok=True)
     safe_id = timm_model_id.replace("/", "_")
