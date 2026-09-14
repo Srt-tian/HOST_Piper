@@ -1,0 +1,10 @@
+{
+  "confirmed": true,
+  "position_unit": "m",
+  "angle_unit": "rad",
+  "rpy": "Rz(yaw)Ry(pitch)Rx(roll)",
+  "end_frame": "recorded state_end endpoint relative to each arm base; URDF audit supports link6/flange; no TCP offset applied",
+  "target_source": "executed_state",
+  "command_semantics_confirmed": false,
+  "evidence": "User confirmed per-arm xyz/RPY and m/rad; FK screening across884 episodes supports extrinsic xyz; preserve recorded poses without correction"
+}

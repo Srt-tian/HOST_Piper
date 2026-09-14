@@ -200,6 +200,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument('--conventions', help='Explicit conventions JSON overlay; source manifest remains immutable')
     args = parser.parse_args()
-    result = convert(read_json(args.manifest), args.output)
+    manifest = read_json(args.manifest)
+    if args.conventions:
+        manifest['conventions'] = read_json(args.conventions)
+    result = convert(manifest, args.output)
     print(json.dumps({"converted_episodes": len(result), "output": args.output}))

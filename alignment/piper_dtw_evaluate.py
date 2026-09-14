@@ -45,13 +45,22 @@ def run(args):
     os.environ['HOST_ALIGNMENT_MODEL_PATH']=args.weights
     os.environ['HOST_ALIGNMENT_LOGITS_TO_KEEP']='1'
     os.environ['HOST_VIDEO_DECODE_MODE']='sequential'
-    selection=select_pairs(args.root,args.per_task)
+    splits=['train','val'] if args.split=='both' else [args.split]
+    selection=[]
+    for split in splits:
+        selection.extend(dict(row,split=split) for row in select_pairs(args.root,args.per_task,split))
+    if args.num_shards < 1 or not 0 <= args.shard_index < args.num_shards:
+        raise ValueError('Invalid shard selection')
+    selection=selection[args.shard_index::args.num_shards]
+    if not selection: raise ValueError('Empty selection')
     if args.limit: selection=selection[:args.limit]
     output.mkdir()
     # Protect the exact snapshot from rotation without duplicating17.5GB.
     candidates=sorted(Path(args.checkpoints).glob('checkpoint-[0-9]*'))
     checkpoint=next(p for p in reversed(candidates) if p.is_dir()
         and not p.name.endswith('.incomplete') and (p/'manifest.json').is_file())
+    if args.checkpoint_step is not None:
+        checkpoint=Path(args.checkpoints)/f'checkpoint-{args.checkpoint_step:06d}'
     manifest=json.loads((checkpoint/'manifest.json').read_text())
     if manifest.get('complete') is not True or manifest.get('weights_only') is not True:
         raise ValueError('Complete model-only checkpoint required')
@@ -66,8 +75,8 @@ def run(args):
         inference_gpu_cap_gib=22,training_modified=False),indent=2))
     print(json.dumps(dict(stage='loading',checkpoint=checkpoint.name,pairs=len(selection))),flush=True)
     processor=AutoProcessor.from_pretrained(args.weights,local_files_only=True,trust_remote_code=False)
-    dataset=AlignmentDataset(mode='eval',processor=processor,
-        video_paths_json=str(Path(args.root)/'val/piper_video_paths.json'))
+    datasets={split:AlignmentDataset(mode='eval',processor=processor,
+        video_paths_json=str(Path(args.root)/split/'piper_video_paths.json')) for split in splits}
     collator=AlignmentCollator(processor=processor,mode='eval')
     model=make_model(args.weights,False)
     state=torch.load(pinned,map_location='cpu',weights_only=True,mmap=True)
@@ -83,7 +92,7 @@ def run(args):
     with torch.no_grad(),(output/'records.jsonl').open('x') as stream:
         for i,selected in enumerate(selection):
             model._ref_cache=RefEmbeddingCache(maxsize=4)
-            sample=dataset[selected['index']]
+            sample=datasets[selected['split']][selected['index']]
             if sample['name']!=selected['path'] or sample['ref_name']!=selected['reference']:
                 raise ValueError('Unexpected sampled reference')
             data=to_device(collator([sample]),torch.device(args.device))
@@ -98,7 +107,7 @@ def run(args):
             if len(metadata)!=1: raise ValueError('Expected one merged pair')
             meta=metadata[0]
             pair_loss=details['per_sample_loss'].float().mean().item()
-            record=dict(step=manifest['step'],task=selected['task'],loss=pair_loss,
+            record=dict(step=manifest['step'],task=selected['task'],split=selected['split'],loss=pair_loss,
                 main_video_path=meta['main_name'],ref_video_path=meta['ref_name'],
                 frame_paths=meta['frame_paths'],ref_frame_paths=meta['ref_frame_paths'])
             for key in ['forward_argmax_indices','backward_argmax_indices',
@@ -128,6 +137,10 @@ if __name__=='__main__':
     parser.add_argument('--device',choices=['cuda','cpu'],default='cuda')
     parser.add_argument('--per-task',type=int,default=2)
     parser.add_argument('--limit',type=int,default=0)
+    parser.add_argument('--split',choices=['train','val','both'],default='val')
+    parser.add_argument('--num-shards',type=int,default=1)
+    parser.add_argument('--shard-index',type=int,default=0)
+    parser.add_argument('--checkpoint-step',type=int)
     args=parser.parse_args()
     try:
         run(args)
