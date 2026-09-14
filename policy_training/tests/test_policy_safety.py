@@ -35,6 +35,25 @@ def test_camera_only_seeded():
     assert state['camera_emb'].shape == (2,1920)
 
 
+def test_native30_model_inputs_guard(monkeypatch):
+    from self_grounded_prediction.models.wan22.self_grounded_predictor import SelfGroundedPredictor
+    model = SimpleNamespace(device='cpu', torch_dtype=torch.float32,
+        video_expert=SimpleNamespace(action_conditioned=False), proprio_encoder=None,
+        visual_encoder=None, _encode_video_latents=lambda video,tiled:torch.zeros(1,48,2,2,2))
+    sample = dict(video=torch.zeros(1,3,5,32,32), action=torch.zeros(1,30,22),
+                  context=torch.ones(1,8,4096),context_mask=torch.ones(1,8,dtype=torch.bool))
+    monkeypatch.delenv('HOST_POLICY_NATIVE_30HZ', raising=False)
+    with pytest.raises(ValueError, match='divisible'):
+        SelfGroundedPredictor.build_inputs(model,sample)
+    monkeypatch.setenv('HOST_POLICY_NATIVE_30HZ','1')
+    result = SelfGroundedPredictor.build_inputs(model,sample)
+    assert result['action'].shape == (1,30,22)
+    assert result['input_latents'].shape[2] == 2
+    model.video_expert.action_conditioned=True
+    with pytest.raises(ValueError, match='divisible'):
+        SelfGroundedPredictor.build_inputs(model,sample)
+
+
 def test_model_only_roundtrip_retention(tmp_path):
     model = tiny()
     accel = SimpleNamespace(is_main_process=True, wait_for_everyone=lambda:None,

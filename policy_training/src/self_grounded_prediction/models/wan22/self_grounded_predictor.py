@@ -501,7 +501,14 @@ class SelfGroundedPredictor(torch.nn.Module):
         if action.ndim != 3:
             raise ValueError(f"`sample['action']` must be 3D [B, T, a_dim], got shape {tuple(action.shape)}")
         action_horizon = int(action.shape[1])
-        if action_horizon % (num_frames - 1) != 0:
+        native30 = (
+            os.environ.get("HOST_POLICY_NATIVE_30HZ") == "1"
+            and action_horizon == 30 and num_frames == 5
+            and not getattr(self.video_expert, "action_conditioned", False)
+        )
+        # Joint MoT consumes independent action tokens; it does not divide actions
+        # across raw RGB intervals. Keep legacy validation for all other paths.
+        if action_horizon % (num_frames - 1) != 0 and not native30:
             raise ValueError(
                 f"`sample['action']` temporal dimension must be divisible by video transitions ({num_frames - 1}), got {action_horizon}"
             )
