@@ -35,14 +35,29 @@ def split_qwen_rows(inputs, config):
             raise ValueError('Unconsumed visual grids/pixels')
     return rows
 
-def install_serial_cnn(model):
+def merge_qwen_rows(rows):
+    result={}
+    for key in rows[0]:
+        values=[r[key] for r in rows]
+        if key=='cls_token_id':
+            result[key]=values[0]
+        elif all(v is None for v in values):
+            result[key]=None
+        else:
+            result[key]=torch.cat([v for v in values if v is not None],dim=0)
+    return result
+
+def install_serial_cnn(model, rows_per_forward=1):
+    if rows_per_forward not in (1,2,4,8):
+        raise ValueError('Supported packed-row batch sizes:1,2,4,8')
     original=model.cnn.forward
     def serial(cnn, data):
         if torch.is_grad_enabled():
             raise ValueError('Serial encoding is inference-only')
         mains=[]; refs=[]
         rows=split_qwen_rows(data['qwen_input'],cnn.base_model.config)
-        for row in rows:
+        for start in range(0,len(rows),rows_per_forward):
+            row=merge_qwen_rows(rows[start:start+rows_per_forward])
             emb=original({'qwen_input':row})
             nm=int(row['num_mains'].sum()); nr=int(row['num_refs'].sum())
             if len(emb)!=nm+nr: raise ValueError('Unexpected extracted anchor count')
