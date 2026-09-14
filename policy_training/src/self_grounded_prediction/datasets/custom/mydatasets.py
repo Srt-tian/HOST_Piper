@@ -466,6 +466,15 @@ class CustomDataset(Dataset):
         if not path_list:
             return [] if not is_single else None
 
+        # Explicit Piper path: failures must not enter the legacy black-frame fallback.
+        backend = os.environ.get('HOST_POLICY_VIDEO_DECODE', 'legacy')
+        if backend not in ('legacy', 'sequential'):
+            raise ValueError(f'Unknown policy video decoder: {backend}')
+        if backend == 'sequential':
+            from .piper_decode import load_frames_strict
+            frames = load_frames_strict(path_list, target_size)
+            return frames[0] if is_single else frames
+
         try:
             first_path = path_list[0]
             is_video = isinstance(first_path, str) and first_path.startswith("video://")
