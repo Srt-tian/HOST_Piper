@@ -73,8 +73,14 @@ def test_timing_preserves_real_gaps():
         temporal.timing([0, 0])
 
 
-def test_export_requires_review_and_records_provenance(tmp_path):
+@pytest.mark.parametrize('use_alias', [False, True])
+def test_export_requires_review_and_records_provenance(tmp_path, use_alias):
     root = tmp_path/'visual'
+    if use_alias:
+        root.mkdir()
+        alias = tmp_path/'idc_alias'
+        alias.symlink_to(root, target_is_directory=True)
+        root = alias
     episodes = [root/'episodes/train/source'/f'ep_{i}' for i in range(2)]
     for ep in episodes:
         ep.mkdir(parents=True)

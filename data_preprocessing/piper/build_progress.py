@@ -116,9 +116,12 @@ def export(root, records, anchors, output, model_id, context_frames):
         raise ValueError('No model-derived records supplied')
     # All validation happens before any writes. Incomplete coverage remains explicit;
     # this directory is an artifact, not a training-ready dataset.
+    relative_paths = {main: Path(main).resolve().relative_to(root) for main in pending}
+    if len(set(relative_paths.values())) != len(relative_paths):
+        raise ValueError('Multiple episode aliases map to the same output')
     output.mkdir(parents=True)
     for main, label in pending.items():
-        dest = output/Path(main).relative_to(root)/'info_dtw.json'
+        dest = output/relative_paths[main]/'info_dtw.json'
         dest.parent.mkdir(parents=True, exist_ok=True)
         with dest.open('x') as handle:
             json.dump(label, handle, allow_nan=False)
