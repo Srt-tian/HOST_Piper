@@ -1,0 +1,15 @@
+# @package _global_
+# Piper native30Hz adaptation: no static compression/time warping; not exact paper sampling.
+defaults:
+  - piper_3cam_paper_objective
+  - _self_
+
+data:
+  train:
+    future_executed_state: true
+    frames: 2
+    remove_static_frames: false
+    sampling_interval_min_mult: 1.0
+    sampling_interval_max_mult: 1.0
+  val:
+    future_executed_state: true

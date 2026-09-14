@@ -290,6 +290,9 @@ class CustomDataset(Dataset):
         # Online preprocessing flags (JSON mode only)
         self.use_relative_action   = args.use_relative_action
         self.remove_static_frames    = args.remove_static_frames
+        self.future_executed_state = bool(getattr(args, 'future_executed_state', False))
+        if self.future_executed_state and (self.remove_static_frames or self.T != 2 or not self.actions or not self.joints):
+            raise ValueError('Future executed-state mode requires frames=2, actions/joints and no static removal')
         self.static_rot_threshold    = args.static_rot_threshold    # radians
         self.static_trans_threshold  = args.static_trans_threshold  # metres
         self.static_gripper_threshold = getattr(args, "static_gripper_threshold", 0.0)
@@ -1575,6 +1578,10 @@ class CustomDataset(Dataset):
 
             return {
                 'raw_actions':  raw_actions,
+                'timestamps': np.asarray([e['timestamp'] for e in entries], dtype=np.float64)
+                    if getattr(self, 'future_executed_state', False) else None,
+                'source_frame_indices': np.asarray([e['source_frame_index'] for e in entries], dtype=np.int64)
+                    if getattr(self, 'future_executed_state', False) else None,
                 'follower_actions': follower_actions,
                 'raw_joints':   raw_joints,
                 'raw_joint_entries': raw_joint_entries,
@@ -1891,7 +1898,7 @@ class CustomDataset(Dataset):
 
     # ==================== End of JSON Mode Helper Methods ====================
 
-    def random_frames_to_tensor(self, views_paths, T, action_prompt=None, action_frames_list=None, dataset_name=None):
+    def random_frames_to_tensor(self, views_paths, T, action_prompt=None, action_frames_list=None, dataset_name=None, eligible_starts=None):
         """
         Sample frames from all camera views simultaneously using shared frame indices.
 
@@ -1928,7 +1935,14 @@ class CustomDataset(Dataset):
                     logging.error(f"   Parent directory: {osp.dirname(first_path)}")
             raise ValueError(f"Insufficient frames: need {T}, got {len(primary_paths)}")
 
-        start_idx = random.randint(0, len(primary_paths) - T)
+        if eligible_starts is None:
+            start_idx = random.randint(0, len(primary_paths) - T)
+        else:
+            if len(eligible_starts) == 0:
+                raise SilentFilterError('No gap-safe future-action windows')
+            start_idx = int(random.choice(eligible_starts))
+            if not 0 <= start_idx <= len(primary_paths) - T:
+                raise ValueError('Future-action start outside episode')
 
         # Build frame indices from action_frames_list or continuous fallback
         if action_frames_list is not None:
@@ -2941,8 +2955,23 @@ class CustomDataset(Dataset):
 
         frames_num = sum(action_frames_per_step)
 
+        eligible_starts = None
+        if self.future_executed_state:
+            from .piper_future import valid_future_starts
+            if dataset_name != 'piper':
+                raise ValueError('Future executed-state profile is Piper-only')
+            raw = scene.get('_ep_raw')
+            if raw is None or not raw['action_keys'] or any(not k.startswith('follow_') for k in raw['action_keys']):
+                raise ValueError('Future targets require executed follow-state fields')
+            if len(raw['timestamps']) != len(image_tokens_path):
+                raise ValueError('Timestamp/image row count mismatch')
+            horizon = int(self.action_frames)
+            eligible_starts = valid_future_starts(raw['timestamps'], raw['source_frame_indices'], horizon, fps=horizon)
+            action_frames_per_step = [horizon, horizon]
+            frames_num = horizon + 1  # observation plus H future states, no extra unused span
+
         # Ensure frames_num doesn't exceed available data
-        if frames_num > len(image_tokens_path):
+        if not self.future_executed_state and frames_num > len(image_tokens_path):
             # Scale down proportionally
             scale_factor = len(image_tokens_path) / frames_num
             action_frames_per_step = [max(1, int(af * scale_factor)) for af in action_frames_per_step]
@@ -2960,6 +2989,7 @@ class CustomDataset(Dataset):
                 action_prompt=action,
                 action_frames_list=action_frames_per_step,
                 dataset_name=dataset_name,
+                eligible_starts=eligible_starts,
             )
             (
                 action_tokens,
@@ -2973,6 +3003,7 @@ class CustomDataset(Dataset):
                 views_images, frames_num,
                 action_frames_list=action_frames_per_step,
                 dataset_name=dataset_name,
+                eligible_starts=eligible_starts,
             )
             (
                 _,
@@ -3130,6 +3161,11 @@ class CustomDataset(Dataset):
                 .clip(0, raw_action_len - 1)
                 .tolist()
             )
+            if self.future_executed_state:
+                from .piper_future import future_indices
+                action_sample_indices = future_indices(agent_frame_indices[0], target_action_len, raw_action_len).tolist()
+                if action_sample_indices[-1] != agent_frame_indices[-1]:
+                    raise ValueError('Future action/video endpoint mismatch')
             action_chunk = scene["action"][action_sample_indices]  # unnormalized raw
 
             # Normalize (and optionally convert to relative) after chunk selection.
@@ -3157,8 +3193,11 @@ class CustomDataset(Dataset):
             # At eval, model-predicted progress is used to advance the task video window.
             if not drop_task_video and frame_start_progress is not None:
                 action_progress = np.linspace(
-                    frame_start_progress, frame_end_progress, target_action_len
+                    frame_start_progress, frame_end_progress,
+                    target_action_len + int(self.future_executed_state)
                 ).tolist()
+                if self.future_executed_state:
+                    action_progress = action_progress[1:]
             else:
                 # task_video dropped — progress is meaningless, use 0.5 as neutral placeholder
                 action_progress = [0.5] * target_action_len
