@@ -121,6 +121,8 @@ def check_train_health(trainer, loss):
         raise RuntimeError('Disk reserve below8GiB')
     record = dict(step=trainer.global_step, rank=trainer.accelerator.process_index,
                   loss=float(loss.detach()), grad_norm=norm, peak_reserved_gib=peak,
+                  peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30,
+                  current_allocated_gib=torch.cuda.memory_allocated()/2**30,
                   elapsed_s=time.perf_counter()-trainer.run_start_time)
     with (Path(trainer.output_dir)/f'health_rank{record["rank"]}.jsonl').open('a') as f:
         f.write(json.dumps(record)+'\n')

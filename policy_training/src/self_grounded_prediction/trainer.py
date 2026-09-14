@@ -1117,6 +1117,11 @@ class Wan22Trainer:
                 continue
             data_load_time = time.time() - _t_data_start
 
+            if self.cfg.get("model_only_checkpoints", False):
+                # Variable task-video presence changes temporary allocation shapes.
+                # Release only idle allocator blocks, never live model/gradient tensors.
+                torch.cuda.empty_cache()
+
             with self.accelerator.accumulate(self.model):
                 train_model = self.model if hasattr(self.model, "training_loss") else self.accelerator.unwrap_model(self.model)
 
