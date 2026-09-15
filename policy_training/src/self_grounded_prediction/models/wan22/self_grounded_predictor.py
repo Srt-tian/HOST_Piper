@@ -1423,6 +1423,9 @@ class SelfGroundedPredictor(torch.nn.Module):
                       + self.loss_lambda_action * loss_action
                       + self.loss_lambda_progress * loss_progress)
         loss_dict = {
+            "timestep_video": float(timestep_video.detach().float().mean()),
+            "timestep_action": float(timestep_action.detach().float().mean()),
+            "timestep_progress": float(timestep_noisy_p.detach().float().mean()) if timestep_noisy_p is not None else float("nan"),
             "loss_video": self.loss_lambda_video * float(loss_video.detach().item()),
             "loss_action": self.loss_lambda_action * float(loss_action.detach().item()),
             "loss_progress": self.loss_lambda_progress * float(loss_progress.detach().item()),

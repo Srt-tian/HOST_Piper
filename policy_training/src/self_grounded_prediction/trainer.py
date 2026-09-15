@@ -144,6 +144,11 @@ class Wan22Trainer:
             mixed_precision=self.mixed_precision,
             step_scheduler_with_optimizer=False,
         )
+        if cfg.get("require_cpu_optimizer_offload", False):
+            plugin = self.accelerator.state.deepspeed_plugin
+            zero = {} if plugin is None else plugin.deepspeed_config.get("zero_optimization", {})
+            if zero.get("stage") != 2 or zero.get("offload_optimizer", {}).get("device") != "cpu":
+                raise ValueError("This profile requires the ZeRO2 CPU-offload configuration")
         
         logger.info(
             "Accelerate training: distributed_type=%s zero_stage=%s world_size=%d process_index=%d cfg_mixed_precision=%s accelerator_mixed_precision=%s grad_accum=%d grad_clip=%.4f",
@@ -259,6 +264,14 @@ class Wan22Trainer:
         self.model, self.optimizer, self.train_loader, self.scheduler = self.accelerator.prepare(
             self.model, self.optimizer, self.train_loader, self.scheduler
         )
+        if cfg.get("require_cpu_optimizer_offload", False):
+            zero_optimizer = self.model.optimizer
+            cpu_optimizer = zero_optimizer.optimizer
+            if not zero_optimizer.cpu_offload or type(cpu_optimizer).__name__ != "DeepSpeedCPUAdam":
+                raise RuntimeError("Expected an actual DeepSpeedCPUAdam offloaded optimizer")
+            if any(p.device.type != "cpu" for group in cpu_optimizer.param_groups for p in group['params']):
+                raise RuntimeError("Optimizer master parameters were not offloaded to CPU")
+            logger.info("CPU_OFFLOAD_VERIFIED: DeepSpeedCPUAdam and all master parameters on CPU")
         self.optimizer.zero_grad(set_to_none=True)
         self.wandb_run = None
         self._init_wandb()
@@ -1133,6 +1146,9 @@ class Wan22Trainer:
                 if self.cfg.get("model_only_checkpoints", False):
                     if not torch.isfinite(loss).all():
                         raise FloatingPointError("Nonfinite training loss; stopping before backward")
+                if self.cfg.get("diagnostic_microbatches", False):
+                    from .policy_safety import record_microbatch
+                    record_microbatch(self, sample, loss, loss_dict)
                 self.accelerator.backward(loss)
 
                 if self.accelerator.sync_gradients:
@@ -1149,6 +1165,9 @@ class Wan22Trainer:
                     global_loss = float(
                         self.accelerator.gather(loss.detach().float().reshape(1)).mean().item()
                     )
+                    if self.cfg.get("diagnostic_microbatches", False):
+                        from .policy_safety import finish_metric_window
+                        global_loss = finish_metric_window(self, loss.device)
                     # Assert all ranks return the same loss_dict keys (step=1 only).
                     # all_gather_object uses pickle and is ~10s per call — do NOT run every step.
                     # Mismatched keys cause collective mismatch deadlock — fail loudly on first step.
@@ -1263,7 +1282,8 @@ class Wan22Trainer:
                                         extra_payload[f"eval_{ds_name}/{key}"] = val
                                 self._wandb_log(extra_payload)
 
-                    if self.save_every > 0 and self.global_step % self.save_every == 0:
+                    if ((self.save_every > 0 and self.global_step % self.save_every == 0)
+                            or self.global_step in self.cfg.get("save_at_steps", [])):
                         ckpt_info = self.save_checkpoint()
                         if self.accelerator.is_main_process:
                             logger.info(

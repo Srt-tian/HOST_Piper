@@ -5,7 +5,7 @@ HOST_ROOT=/root/autodl-tmp/host_piper
 export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="${HOST_ROOT}/policy_runtime/site-packages:${REPO_DIR}/policy_training/src"
 export CUDA_HOME=/usr/local/cuda-12.4
-export PATH="${HOST_ROOT}/policy_runtime/site-packages/ninja/data/bin:${CUDA_HOME}/bin:/usr/bin:/bin"
+export PATH="${HOST_ROOT}/policy_runtime/bin:${CUDA_HOME}/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="/root/host_piper_runtime/python310/lib:${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${CUDA_HOME}/lib64:${LIBRARY_PATH:-}"
 export HF_HOME="${HOST_ROOT}/policy_runtime/cache/huggingface"
@@ -26,6 +26,6 @@ export HOST_DINO_REPO="${HOST_ROOT}/policy_runtime/dinov2"
 export HOST_DINO_WEIGHTS=HOST_CHECKPOINT_STRICT HOST_SIGLIP_WEIGHTS=HOST_CHECKPOINT_STRICT
 export HOST_INIT_CHECKPOINT="${HOST_INIT_CHECKPOINT:-${HOST_ROOT}/policy_weights/host_fcb38563ab7a/model.pt}"
 export ACCELERATE_USE_DEEPSPEED=true
-export ACCELERATE_DEEPSPEED_CONFIG_FILE="${REPO_DIR}/deploy/autodl/policy_zero2.json"
+export ACCELERATE_DEEPSPEED_CONFIG_FILE="${HOST_POLICY_DS_CONFIG:-${REPO_DIR}/deploy/autodl/policy_zero2.json}"
 mkdir -p "${TMPDIR}" "${TORCH_EXTENSIONS_DIR}" "${TRITON_CACHE_DIR}" "${TRITON_HOME}"
 exec /root/host_piper_runtime/python310/bin/python -S -u "$@"

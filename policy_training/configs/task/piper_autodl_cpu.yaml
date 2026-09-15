@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - piper_autodl
+  - _self_
+
+# Keep all three224px views,30future executed states and globalbatch16.
+batch_size: 1
+gradient_accumulation_steps: 4
+max_steps: 1000
+save_every: 20
+save_at_steps: [1, 5]
+diagnostic_microbatches: true
+require_cpu_optimizer_offload: true
+max_reserved_gib: 64

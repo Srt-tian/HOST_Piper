@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import time
+import math
 import torch
 
 MODULES = ('mot', 'proprio_encoder', 'progress_encoder', 'progress_decoder', 'visual_encoder')
@@ -113,16 +114,83 @@ def check_train_health(trainer, loss):
     peak = torch.cuda.max_memory_reserved() / 2**30
     norm = trainer.model.get_global_grad_norm()
     norm = float(norm) if norm is not None else float('nan')
+    reasons = []
     if not (0 < norm < float('inf')):
-        raise FloatingPointError(f'Invalid DeepSpeed gradient norm: {norm}')
+        reasons.append(f'Invalid DeepSpeed gradient norm: {norm}')
     if peak > float(trainer.cfg.get('max_reserved_gib', 74)):
-        raise RuntimeError(f'Peak memory {peak:.2f}GiB exceeds safety gate')
+        reasons.append(f'Peak memory {peak:.2f}GiB exceeds safety gate')
     if shutil.disk_usage(trainer.output_dir).free < 8*2**30:
-        raise RuntimeError('Disk reserve below8GiB')
+        reasons.append('Disk reserve below8GiB')
     record = dict(step=trainer.global_step, rank=trainer.accelerator.process_index,
                   loss=float(loss.detach()), grad_norm=norm, peak_reserved_gib=peak,
                   peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30,
                   current_allocated_gib=torch.cuda.memory_allocated()/2**30,
+                  current_reserved_gib=torch.cuda.memory_reserved()/2**30,
+                  errors=reasons,
                   elapsed_s=time.perf_counter()-trainer.run_start_time)
     with (Path(trainer.output_dir)/f'health_rank{record["rank"]}.jsonl').open('a') as f:
         f.write(json.dumps(record)+'\n')
+    if reasons:
+        raise RuntimeError('; '.join(reasons))
+
+
+def summarize_window(records):
+    """Sample-weighted metric sums; ignore diagnostic NaN sentinels, not loss NaNs."""
+    if not records:
+        raise ValueError('Empty metric window')
+    totals = {}
+    for record in records:
+        size = record['batch_size']
+        for key, value in record['metrics'].items():
+            if value is None or not math.isfinite(value):
+                continue
+            sums = totals.setdefault(key, [0.0, 0.0])
+            sums[0] += value * size
+            sums[1] += size
+    return totals
+
+
+def record_microbatch(trainer, sample, loss, loss_dict):
+    # Scalars only: never retain a loss tensor/autograd graph between microsteps.
+    metrics = {'loss_total': float(loss.detach()), **{k: float(v) for k,v in loss_dict.items()}}
+    metrics = {k: v if math.isfinite(v) else None for k,v in metrics.items()}
+    trainer._diagnostic_microstep = getattr(trainer, '_diagnostic_microstep', 0) + 1
+    record = dict(update=trainer.global_step+1, microstep=trainer._diagnostic_microstep,
+                  rank=trainer.accelerator.process_index, batch_size=int(sample['action'].shape[0]),
+                  metrics=metrics, agent_episodes=sample.get('agent_episode_dir'),
+                  reference_episodes=sample.get('task_episode_dir'),
+                  task_video_dropped=sample.get('task_video_dropped'),
+                  video_shape=list(sample['video'].shape),
+                  task_video_shape=list(sample['task_video'].shape),
+                  elapsed_s=time.perf_counter()-trainer.run_start_time)
+    for name in ('action', 'proprio', 'progress_gt'):
+        value = sample.get(name)
+        if isinstance(value, torch.Tensor):
+            value = value.detach().float()
+            record[name] = dict(shape=list(value.shape), min=float(value.min()),
+                                max=float(value.max()), finite=bool(torch.isfinite(value).all()))
+    with (Path(trainer.output_dir)/f'micro_rank{record["rank"]}.jsonl').open('a') as f:
+        f.write(json.dumps(record, allow_nan=False)+'\n')
+    if not hasattr(trainer, '_metric_window'):
+        trainer._metric_window = []
+    trainer._metric_window.append({'batch_size': record['batch_size'], 'metrics': metrics})
+
+
+def finish_metric_window(trainer, device):
+    totals = summarize_window(trainer._metric_window)
+    # Every rank/model exposes the same loss_dict keys; diagnostic NaNs contribute0count.
+    keys = sorted(trainer._metric_window[0]['metrics'])
+    tensor = torch.tensor([totals.get(k, [0.,0.]) for k in keys], device=device, dtype=torch.float64)
+    tensor = trainer.accelerator.reduce(tensor, reduction='sum').cpu()
+    means = {k: float(row[0]/row[1]) if row[1] else None for k,row in zip(keys,tensor)}
+    record = dict(step=trainer.global_step, metrics=means,
+                  samples=int(tensor[keys.index('loss_total'),1]),
+                  grad_norm=float(trainer.model.get_global_grad_norm()),
+                  elapsed_s=time.perf_counter()-trainer.run_start_time)
+    if trainer.accelerator.is_main_process:
+        with (Path(trainer.output_dir)/'metrics.jsonl').open('a') as f:
+            f.write(json.dumps(record, allow_nan=False)+'\n')
+        print('UPDATE_METRICS '+json.dumps(record, allow_nan=False), flush=True)
+    trainer._metric_window.clear()
+    torch.cuda.reset_peak_memory_stats()
+    return means['loss_total']
